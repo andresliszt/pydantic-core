@@ -29,6 +29,7 @@ pub(super) struct SerField {
     // None serializer means exclude
     pub serializer: Option<CombinedSerializer>,
     pub required: bool,
+    pub exclude_if: Option<Py<PyAny>>,
 }
 
 impl_py_gc_traverse!(SerField { serializer });
@@ -40,6 +41,7 @@ impl SerField {
         alias: Option<String>,
         serializer: Option<CombinedSerializer>,
         required: bool,
+        exclude_if: Option<Py<PyAny>>,
     ) -> Self {
         let alias_py = alias
             .as_ref()
@@ -50,6 +52,7 @@ impl SerField {
             alias_py,
             serializer,
             required,
+            exclude_if,
         }
     }
 
@@ -72,14 +75,30 @@ impl SerField {
     }
 }
 
-fn exclude_default(value: &Bound<'_, PyAny>, extra: &Extra, serializer: &CombinedSerializer) -> PyResult<bool> {
+fn exclude_default_or_if(
+    exclude_if_callable: &Option<Py<PyAny>>,
+    value: &Bound<'_, PyAny>,
+    extra: &Extra,
+    serializer: &CombinedSerializer,
+) -> PyResult<bool> {
+    let py = value.py();
+
+    if let Some(exclude_if_callable) = exclude_if_callable {
+        let result = exclude_if_callable.call1(py, (value,))?;
+        let exclude = result.extract::<bool>(py)?;
+        if exclude {
+            return Ok(true);
+        }
+    }
+
     if extra.exclude_defaults {
-        if let Some(default) = serializer.get_default(value.py())? {
+        if let Some(default) = serializer.get_default(py)? {
             if value.eq(default)? {
                 return Ok(true);
             }
         }
     }
+    // If neither condition is met, do not exclude the field
     Ok(false)
 }
 
@@ -176,7 +195,7 @@ impl GeneralFieldsSerializer {
             if let Some((next_include, next_exclude)) = self.filter.key_filter(&key, include, exclude)? {
                 if let Some(field) = op_field {
                     if let Some(ref serializer) = field.serializer {
-                        if !exclude_default(&value, &field_extra, serializer)? {
+                        if !exclude_default_or_if(&field.exclude_if, &value, &field_extra, serializer)? {
                             let value = serializer.to_python(
                                 &value,
                                 next_include.as_ref(),
@@ -263,7 +282,9 @@ impl GeneralFieldsSerializer {
             if let Some((next_include, next_exclude)) = filter {
                 if let Some(field) = self.fields.get(key_str) {
                     if let Some(ref serializer) = field.serializer {
-                        if !exclude_default(&value, &field_extra, serializer).map_err(py_err_se_err)? {
+                        if !exclude_default_or_if(&field.exclude_if, &value, &field_extra, serializer)
+                            .map_err(py_err_se_err)?
+                        {
                             let s = PydanticSerializer::new(
                                 &value,
                                 serializer,
