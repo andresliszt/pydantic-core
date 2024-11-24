@@ -203,6 +203,29 @@ def test_include_exclude_args(params):
     assert json.loads(s.to_json(value, include=include, exclude=exclude)) == expected
 
 
+def test_exclude_if():
+    s = SchemaSerializer(
+        core_schema.model_schema(
+            BasicModel,
+            core_schema.model_fields_schema(
+                {
+                    'a': core_schema.model_field(core_schema.int_schema(), exclude_if=lambda x: x > 1),
+                    'b': core_schema.model_field(core_schema.str_schema(), exclude_if=lambda x: 'foo' in x),
+                }
+            ),
+        )
+    )
+    assert s.to_python(BasicModel(a=0, b='bar')) == {'a': 0, 'b': 'bar'}
+    assert s.to_python(BasicModel(a=2, b='bar')) == {'b': 'bar'}
+    assert s.to_python(BasicModel(a=0, b='foo')) == {'a': 0}
+    assert s.to_python(BasicModel(a=2, b='foo')) == {}
+
+    assert s.to_json(BasicModel(a=0, b='bar')) == b'{"a":0,"b":"bar"}'
+    assert s.to_json(BasicModel(a=2, b='bar')) == b'{"b":"bar"}'
+    assert s.to_json(BasicModel(a=0, b='foo')) == b'{"a":0}'
+    assert s.to_json(BasicModel(a=2, b='foo')) == b'{}'
+
+
 def test_alias():
     s = SchemaSerializer(
         core_schema.model_schema(
