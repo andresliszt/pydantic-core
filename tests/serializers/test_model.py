@@ -211,19 +211,22 @@ def test_exclude_if():
                 {
                     'a': core_schema.model_field(core_schema.int_schema(), exclude_if=lambda x: x > 1),
                     'b': core_schema.model_field(core_schema.str_schema(), exclude_if=lambda x: 'foo' in x),
+                    'c': core_schema.model_field(
+                        core_schema.str_schema(), serialization_exclude=True, exclude_if=lambda x: 'foo' in x
+                    ),
                 }
             ),
         )
     )
-    assert s.to_python(BasicModel(a=0, b='bar')) == {'a': 0, 'b': 'bar'}
-    assert s.to_python(BasicModel(a=2, b='bar')) == {'b': 'bar'}
-    assert s.to_python(BasicModel(a=0, b='foo')) == {'a': 0}
-    assert s.to_python(BasicModel(a=2, b='foo')) == {}
+    assert s.to_python(BasicModel(a=0, b='bar', c='bar')) == {'a': 0, 'b': 'bar'}
+    assert s.to_python(BasicModel(a=2, b='bar', c='bar')) == {'b': 'bar'}
+    assert s.to_python(BasicModel(a=0, b='foo', c='bar')) == {'a': 0}
+    assert s.to_python(BasicModel(a=2, b='foo', c='bar')) == {}
 
-    assert s.to_json(BasicModel(a=0, b='bar')) == b'{"a":0,"b":"bar"}'
-    assert s.to_json(BasicModel(a=2, b='bar')) == b'{"b":"bar"}'
-    assert s.to_json(BasicModel(a=0, b='foo')) == b'{"a":0}'
-    assert s.to_json(BasicModel(a=2, b='foo')) == b'{}'
+    assert s.to_json(BasicModel(a=0, b='bar', c='bar')) == b'{"a":0,"b":"bar"}'
+    assert s.to_json(BasicModel(a=2, b='bar', c='bar')) == b'{"b":"bar"}'
+    assert s.to_json(BasicModel(a=0, b='foo', c='bar')) == b'{"a":0}'
+    assert s.to_json(BasicModel(a=2, b='foo', c='bar')) == b'{}'
 
 
 def test_alias():
