@@ -75,7 +75,6 @@ impl SerField {
     }
 }
 
-
 fn exclude_if(
     exclude_if_callable: &Option<Py<PyAny>>,
     value: &Bound<'_, PyAny>,
@@ -92,13 +91,7 @@ fn exclude_if(
     Ok(false)
 }
 
-
-fn exclude_default(
-    value: &Bound<'_, PyAny>,
-    extra: &Extra,
-    serializer: &CombinedSerializer,
-) -> PyResult<bool> {
-
+fn exclude_default(value: &Bound<'_, PyAny>, extra: &Extra, serializer: &CombinedSerializer) -> PyResult<bool> {
     if extra.exclude_defaults {
         if let Some(default) = serializer.get_default(value.py())? {
             if value.eq(default)? {
@@ -209,12 +202,8 @@ impl GeneralFieldsSerializer {
                         if exclude_if(&field.exclude_if, &value, serializer)? {
                             continue;
                         }
-                        let value = serializer.to_python(
-                            &value,
-                            next_include.as_ref(),
-                            next_exclude.as_ref(),
-                            &field_extra,
-                        )?;
+                        let value =
+                            serializer.to_python(&value, next_include.as_ref(), next_exclude.as_ref(), &field_extra)?;
                         let output_key = field.get_key_py(output_dict.py(), &field_extra);
                         output_dict.set_item(output_key, value)?;
                     }
@@ -294,9 +283,8 @@ impl GeneralFieldsSerializer {
             if let Some((next_include, next_exclude)) = filter {
                 if let Some(field) = self.fields.get(key_str) {
                     if let Some(ref serializer) = field.serializer {
-                        if exclude_default(&value, &field_extra, serializer)
-                            .map_err(py_err_se_err)?{
-                                continue;
+                        if exclude_default(&value, &field_extra, serializer).map_err(py_err_se_err)? {
+                            continue;
                         }
                         if exclude_if(&field.exclude_if, &value, serializer).map_err(py_err_se_err)? {
                             continue;
