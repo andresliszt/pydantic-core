@@ -75,24 +75,32 @@ impl SerField {
     }
 }
 
-fn exclude_default_or_if(
+
+fn exclude_if(
     exclude_if_callable: &Option<Py<PyAny>>,
     value: &Bound<'_, PyAny>,
-    extra: &Extra,
     serializer: &CombinedSerializer,
 ) -> PyResult<bool> {
-    let py = value.py();
-
     if let Some(exclude_if_callable) = exclude_if_callable {
+        let py = value.py();
         let result = exclude_if_callable.call1(py, (value,))?;
         let exclude = result.extract::<bool>(py)?;
         if exclude {
             return Ok(true);
         }
     }
+    Ok(false)
+}
+
+
+fn exclude_default(
+    value: &Bound<'_, PyAny>,
+    extra: &Extra,
+    serializer: &CombinedSerializer,
+) -> PyResult<bool> {
 
     if extra.exclude_defaults {
-        if let Some(default) = serializer.get_default(py)? {
+        if let Some(default) = serializer.get_default(value.py())? {
             if value.eq(default)? {
                 return Ok(true);
             }
@@ -195,16 +203,20 @@ impl GeneralFieldsSerializer {
             if let Some((next_include, next_exclude)) = self.filter.key_filter(&key, include, exclude)? {
                 if let Some(field) = op_field {
                     if let Some(ref serializer) = field.serializer {
-                        if !exclude_default_or_if(&field.exclude_if, &value, &field_extra, serializer)? {
-                            let value = serializer.to_python(
-                                &value,
-                                next_include.as_ref(),
-                                next_exclude.as_ref(),
-                                &field_extra,
-                            )?;
-                            let output_key = field.get_key_py(output_dict.py(), &field_extra);
-                            output_dict.set_item(output_key, value)?;
+                        if exclude_default(&value, &field_extra, serializer)? {
+                            continue;
                         }
+                        if exclude_if(&field.exclude_if, &value, serializer)? {
+                            continue;
+                        }
+                        let value = serializer.to_python(
+                            &value,
+                            next_include.as_ref(),
+                            next_exclude.as_ref(),
+                            &field_extra,
+                        )?;
+                        let output_key = field.get_key_py(output_dict.py(), &field_extra);
+                        output_dict.set_item(output_key, value)?;
                     }
 
                     if field.required {
@@ -282,19 +294,22 @@ impl GeneralFieldsSerializer {
             if let Some((next_include, next_exclude)) = filter {
                 if let Some(field) = self.fields.get(key_str) {
                     if let Some(ref serializer) = field.serializer {
-                        if !exclude_default_or_if(&field.exclude_if, &value, &field_extra, serializer)
-                            .map_err(py_err_se_err)?
-                        {
-                            let s = PydanticSerializer::new(
-                                &value,
-                                serializer,
-                                next_include.as_ref(),
-                                next_exclude.as_ref(),
-                                &field_extra,
-                            );
-                            let output_key = field.get_key_json(key_str, &field_extra);
-                            map.serialize_entry(&output_key, &s)?;
+                        if exclude_default(&value, &field_extra, serializer)
+                            .map_err(py_err_se_err)?{
+                                continue;
                         }
+                        if exclude_if(&field.exclude_if, &value, serializer).map_err(py_err_se_err)? {
+                            continue;
+                        }
+                        let s = PydanticSerializer::new(
+                            &value,
+                            serializer,
+                            next_include.as_ref(),
+                            next_exclude.as_ref(),
+                            &field_extra,
+                        );
+                        let output_key = field.get_key_json(key_str, &field_extra);
+                        map.serialize_entry(&output_key, &s)?;
                     }
                 } else if self.mode == FieldsMode::TypedDictAllow {
                     let output_key = infer_json_key(&key, &field_extra).map_err(py_err_se_err)?;
